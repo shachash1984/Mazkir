@@ -1,0 +1,25 @@
+#cloud-config
+# Ubuntu 24.04 LTS. Add your public SSH key using the DigitalOcean creation UI.
+# No credentials or private SSH keys belong in this file.
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - ufw
+  - unattended-upgrades
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-mazkir.conf
+    permissions: '0644'
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+runcmd:
+  - [systemctl, enable, --now, docker]
+  - [ufw, allow, OpenSSH]
+  - [ufw, default, deny, incoming]
+  - [ufw, --force, enable]
+  - [systemctl, reload, ssh]
+  - [mkdir, -p, /opt/mazkir/backups]
+  - [chown, '1000:1000', /opt/mazkir/backups]

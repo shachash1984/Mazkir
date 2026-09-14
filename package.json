@@ -1,0 +1,41 @@
+{
+  "name": "mazkir",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit",
+    "test": "node --experimental-sqlite --import tsx --test test/*.test.ts",
+    "dev": "node --experimental-sqlite --import tsx src/cli.ts",
+    "start": "node --experimental-sqlite dist/src/cli.js start",
+    "setup": "node --experimental-sqlite --import tsx src/cli.ts setup",
+    "doctor": "node --experimental-sqlite --import tsx src/cli.ts doctor",
+    "login:microsoft": "node --experimental-sqlite --import tsx src/cli.ts login-microsoft",
+    "pair:whatsapp": "node --experimental-sqlite --import tsx src/cli.ts pair-whatsapp",
+    "demo": "node --experimental-sqlite --import tsx src/cli.ts demo",
+    "eval:live": "node --experimental-sqlite --import tsx src/eval.ts",
+    "eval:voice": "node --experimental-sqlite --import tsx src/voice-eval.ts"
+  },
+  "dependencies": {
+    "@azure/msal-node": "6.0.0",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "dotenv": "17.4.2",
+    "luxon": "3.7.2",
+    "music-metadata": "11.15.0",
+    "openai": "7.12.1",
+    "pino": "10.3.1",
+    "qrcode-terminal": "0.12.0",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/luxon": "3.7.5",
+    "@types/node": "22.20.1",
+    "@types/qrcode-terminal": "0.12.2",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
+  }
+}
