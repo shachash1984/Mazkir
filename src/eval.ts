@@ -9,7 +9,10 @@ import { Store, type Job } from './store.js';
 import { Language } from './language.js';
 import type { CalendarEvent, Intent } from './domain.js';
 
-const cfg = config();
+const cfg = { ...config(), members: [
+  { name: 'Synthetic Parent', phone: '15550000001', email: 'a@example.com' },
+  { name: 'Synthetic Partner', phone: '15550000002', email: 'b@example.com' },
+] };
 const store = new Store(mkdtempSync(join(tmpdir(), 'mazkir-eval-')), randomBytes(32).toString('hex'));
 const language = new Language({ ...cfg, aiCap: 0.25 }, store);
 const events: CalendarEvent[] = [1, 2].map(n => ({ id: `synthetic-${n}`, subject: 'Judo',
@@ -30,7 +33,7 @@ const cases: { name: string; text: string; candidates: CalendarEvent[]; check: (
 let lastResult: Intent | undefined;
 try {
   for (const [index, item] of cases.entries()) {
-    const job: Job = { id: `eval-${index}`, chat: `synthetic-${index}`, actor: 'Synthetic Parent', text: item.text,
+    const job: Job = { id: `eval-${index}`, chat: cfg.members[0]!.phone, actor: 'Synthetic Parent', text: item.text,
       at: new Date().toISOString(), status: 'pending', attempts: 0, nextAt: 0 };
     const result = await language.interpret(job, item.candidates);
     lastResult = result;

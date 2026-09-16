@@ -10,6 +10,7 @@ import { Language } from './language.js';
 import { WhatsApp } from './whatsapp.js';
 import { Worker } from './worker.js';
 import { Speech } from './speech.js';
+import { Tasks } from './tasks.js';
 
 async function main(): Promise<void> {
   const command = process.argv[2] ?? 'doctor';
@@ -22,6 +23,7 @@ async function main(): Promise<void> {
   }
   if (command === 'demo') { await (await import('./demo.js')).demo(); return; }
   const cfg = config(), store = new Store(cfg.dataDir, cfg.encryptionKey);
+  const tasks = new Tasks(store, cfg.members);
   const owner = randomUUID();
   if (!store.acquire(owner)) { store.close(); throw new Error('Another Mazkir process is using this database. Stop it before pairing, login, backup, or recovery.'); }
   const lease = setInterval(() => {
@@ -40,18 +42,19 @@ async function main(): Promise<void> {
           'Organizer signed in': !!store.get('ms-account'),
           'WhatsApp session saved': !!store.get('wa:creds'),
           'External email monitor configured': !!cfg.healthcheckUrl,
-          'No blocked jobs': !store.hasBlocked(),
+          'No blocked jobs': !store.hasBlocked() && !tasks.hasBlocked(),
           'No inbound storage fault': !store.get('inbound-fault'),
         };
         for (const [label, ok] of Object.entries(checks)) console.log(`${ok ? 'OK' : 'NEEDS SETUP'} ${label}`);
         console.log(`Account configuration only; no provider connectivity tested. Recorded AI spend: $${store.spend().toFixed(4)}.`);
         for (const row of store.db.prepare("SELECT id,status,attempts FROM jobs WHERE status!='done'").all()) console.log(row);
+        for (const id of tasks.blockedIds()) console.log({ id, status: 'blocked task notification' });
         if (Object.values(checks).some(v => !v)) process.exitCode = 1;
       } else if (command === 'login-microsoft') {
         await new MicrosoftAuth(cfg, store).login(console.log);
         console.log('Organizer login saved encrypted.');
       } else if (command === 'resume') {
-        if (!process.argv[3] || !store.resume(process.argv[3])) throw new Error('Supply a blocked job ID from doctor.');
+        if (!process.argv[3] || !(store.resume(process.argv[3]) || tasks.resume(process.argv[3]))) throw new Error('Supply a blocked job or task notification ID from doctor.');
         console.log('Job queued for reconciliation and retry.');
       } else if (command === 'clear-inbound-fault') {
         store.remove('inbound-fault');
@@ -80,7 +83,7 @@ async function main(): Promise<void> {
   const graph = new GraphClient(new MicrosoftAuth(cfg, store));
   const language = new Language(cfg, store);
   const worker = new Worker(store, new Calendar(graph, cfg), language, wa,
-    id => console.error(`Job ${id} needs intervention. Inspect with doctor; fix the connection/account, then resume this job.`), new Speech(cfg, store));
+    id => console.error(`Job ${id} needs intervention. Inspect with doctor; fix the connection/account, then resume this job.`), new Speech(cfg, store), tasks);
   wa.connect();
   let checking = false;
   async function health(): Promise<void> {

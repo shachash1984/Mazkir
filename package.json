@@ -18,7 +18,8 @@
     "pair:whatsapp": "node --experimental-sqlite --import tsx src/cli.ts pair-whatsapp",
     "demo": "node --experimental-sqlite --import tsx src/cli.ts demo",
     "eval:live": "node --experimental-sqlite --import tsx src/eval.ts",
-    "eval:voice": "node --experimental-sqlite --import tsx src/voice-eval.ts"
+    "eval:voice": "node --experimental-sqlite --import tsx src/voice-eval.ts",
+    "eval:tasks": "node --experimental-sqlite --import tsx src/task-eval.ts"
   },
   "dependencies": {
     "@azure/msal-node": "6.0.0",

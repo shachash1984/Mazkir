@@ -5,6 +5,7 @@ import type { LanguagePort } from './language.js';
 import { NotFoundError } from './microsoft.js';
 import { Store, type Job } from './store.js';
 import { replyChunks, speechText, type ReplyAudio, type SpeechPort } from './speech.js';
+import { Tasks, type TaskPlan } from './tasks.js';
 
 export interface Messenger {
   send(chat: string, text: string, id: string): Promise<void>;
@@ -13,9 +14,9 @@ export interface Messenger {
 export class Worker {
   private busy = false;
   private startedAt = 0;
-  healthy(): boolean { return !this.busy || Date.now() - this.startedAt < 180000; }
+  healthy(): boolean { return (!this.busy || Date.now() - this.startedAt < 180000) && !this.tasks?.hasBlocked(); }
   constructor(private store: Store, private calendar: Calendar, private language: LanguagePort,
-    private messenger: Messenger, private alert: (jobId: string) => void, private speech?: SpeechPort) {}
+    private messenger: Messenger, private alert: (jobId: string) => void, private speech?: SpeechPort, private tasks?: Tasks) {}
 
   private async deliver(job: Job): Promise<void> {
     if (!job.delivery) {
@@ -25,7 +26,11 @@ export class Worker {
       if (job.voiceReply) {
         try {
           if (!this.speech || !this.messenger.sendAudio) throw new Error('Speech unavailable.');
-          job.delivery.audio = await this.speech.synthesize(speechText(job.reply!, job.plan as CalendarPlan | undefined));
+          const taskPlan = job.plan as TaskPlan | undefined;
+          const spoken = taskPlan?.kind === 'task' && job.reply!.length > POLICY.maxSpeechChars ?
+            (taskPlan.intent.language === 'he' ? 'רשימת המשימות והפרטים המלאים מופיעים בהודעת הטקסט.' : 'Your task list and full details are in the text message.') :
+            speechText(job.reply!, job.plan as CalendarPlan | undefined);
+          job.delivery.audio = await this.speech.synthesize(spoken);
           job.delivery.speech = 'ready';
         } catch { job.delivery.speech = 'unavailable'; }
         this.store.savePayload(job);
@@ -60,15 +65,20 @@ export class Worker {
   }
 
   async tick(): Promise<void> {
-    if (this.busy || this.store.hasBlocked()) return;
+    if (this.busy) return;
+    this.tasks?.maintain();
+    if (this.store.hasBlocked()) return;
     const job = this.store.next();
-    if (!job) return;
     this.busy = true;
     this.startedAt = Date.now();
     try {
+      if (!job) { await this.tasks?.deliver(this.messenger, this.alert); return; }
       if (job.status === 'reply') {
         await this.deliver(job);
         return;
+      }
+      if ((job.plan as TaskPlan | undefined)?.kind === 'task') {
+        this.store.readyReply(job, (job.plan as TaskPlan).reply); return;
       }
       let plan = job.plan as CalendarPlan | undefined;
       if (!plan) {
@@ -79,13 +89,28 @@ export class Worker {
           delete job.audio;
           this.store.savePayload(job);
         }
+        const initial = this.tasks ? await this.language.interpretInitial?.(job) : undefined;
+        if (initial && (initial.action === 'task' || initial.action === 'clarify')) {
+          job.voiceReply = job.voiceReply || initial.voiceReply;
+          this.store.savePayload(job);
+          if (initial.action === 'task' && !initial.question) {
+            job.plan = this.tasks!.apply(initial, job);
+            this.store.readyReply(job, (job.plan as TaskPlan).reply);
+          } else this.store.readyReply(job, initial.question ?? 'Please clarify.');
+          return;
+        }
         const recent = this.store.get<{ at: number; events: CalendarEvent[] }>('context:' + job.chat);
         const cached = recent && Date.now() - recent.at < POLICY.retentionDays * 86400000 ? recent.events : [];
-        const fresh = await this.calendar.candidates(job);
+        const fresh = initial && (initial.action === 'create' || initial.action === 'list') ? [] : await this.calendar.candidates(job);
         const candidates = [...new Map([...cached, ...fresh].map(e => [e.id, e])).values()].slice(-POLICY.maxEvents);
-        const intent = await this.language.interpret(job, candidates);
+        const intent = initial && (initial.action === 'create' || initial.action === 'list') ? initial : await this.language.interpret(job, candidates);
         job.voiceReply = job.voiceReply || intent.voiceReply;
         this.store.savePayload(job);
+        if (intent.action === 'task' && !intent.question) {
+          if (!this.tasks) throw new UserError('Shared tasks are unavailable in this session.', 'משימות משותפות אינן זמינות בשיחה זו.');
+          job.plan = this.tasks.apply(intent, job);
+          this.store.readyReply(job, (job.plan as TaskPlan).reply); return;
+        }
         plan = await this.calendar.prepare(intent, job, candidates);
         this.store.plan(job.id, plan);
         job.plan = plan;
@@ -95,9 +120,10 @@ export class Worker {
       if (events.length) this.store.set('context:' + job.chat, { at: Date.now(), events });
       this.store.readyReply(job, this.calendar.receipt(plan));
     } catch (error) {
+      if (!job) throw error;
       const plan = job.plan as CalendarPlan | undefined;
       // A partial multi-step operation must be resumed, never presented as an untouched calendar.
-      const partial = plan?.steps.some(s => s.done);
+      const partial = plan?.steps?.some(s => s.done) || (job.plan as TaskPlan | undefined)?.kind === 'task';
       if ((error instanceof UserError || error instanceof NotFoundError) && !partial && job.status !== 'reply') {
         const he = /[\u0590-\u05ff]/.test(job.text);
         this.store.readyReply(job, error instanceof UserError ? (he ? error.hebrew : error.english) :
