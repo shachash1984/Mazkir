@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { DateTime, IANAZone } from 'luxon';
 import { POLICY, UserError } from './config.js';
+import type { TaskCommand } from './task-domain.js';
 
 const nullableText = z.string().nullable();
 export const intentSchema = z.object({
-  action: z.enum(['create', 'update', 'cancel', 'list', 'clarify']),
+  action: z.enum(['create', 'update', 'cancel', 'list', 'clarify', 'task']),
   language: z.enum(['en', 'he']),
   question: nullableText,
   eventId: nullableText,
@@ -23,7 +24,7 @@ export const intentSchema = z.object({
   }).nullable(),
   queryStart: nullableText, queryEnd: nullableText,
 });
-export type Intent = z.infer<typeof intentSchema> & { voiceReply?: boolean };
+export type Intent = z.infer<typeof intentSchema> & { voiceReply?: boolean; task?: TaskCommand | null };
 export function executableIntent(value: unknown): Intent {
   const intent = intentSchema.parse(value);
   // A question and a mutation are contradictory. Asking always wins: never write while clarifying.

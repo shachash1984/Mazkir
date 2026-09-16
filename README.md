@@ -2,6 +2,28 @@
 
 A scheduling assistant for two private WhatsApp chats. It creates events in its own Outlook.com calendar and invites both configured work addresses. It also updates/cancels its events and answers agenda questions. Text/voice interpretation uses OpenAI; WhatsApp uses Baileys.
 
+**Shared tasks — 16 September 2026 (local implementation; not deployed):** both family members can manage a shared task list, assign owners, add deadlines and notes, and request two WhatsApp reminders at least 24 hours apart. See the [approved specification](SHARED_TASKS_SPEC.md).
+
+## Shared tasks
+
+Use either existing private chat, in English, Hebrew, or a mixture. Examples:
+
+- “Add a task to submit the school form by Friday.” A deadline alone sends no reminders.
+- “Remind me to book the dentist tomorrow.” This creates a task assigned to you, with reminders at 09:00 Israel time and the same local time the following day, subject to the 24-hour minimum.
+- “Assign the school form task to [your spouse's name].” They receive an assignment update.
+- “Show our tasks,” “What's on my list?”, “What's overdue?”, or “What's due this week?”
+- “Mark 2 done,” “Show details for 3,” or “Remind both of us about 1 the day before it's due at 8 PM.” Numbers refer to the last task list in your own chat.
+- “Snooze task 1 until Friday at 10.” Only your pending notification is postponed. If none remain, Mazkir asks before creating a new pair.
+- “Delete task 2” cancels it; “Restore task 2” makes it active again with old reminders stopped.
+
+Both people can edit any task. Completion, cancellation, restoration, reassignment, and deadline changes notify the other person; title and note edits stay quiet. Unassigned tasks remind both people unless explicit recipients are chosen. New reminder requests replace the intended recipients' pending schedule. Recurring tasks and repeating reminders are deferred.
+
+Tasks stay in Mazkir and do not create Outlook events. Active tasks persist until completed or canceled; terminal task content expires after 90 days. Chat history and numbered-list references retain their existing 30-day lifetime. Old backups have separate retention. Proactive notifications use text; responses to voice requests retain the existing speech behavior.
+
+Task notification failures use the existing health monitor, `doctor`, and `resume ID` workflow. Delivery retries preserve task changes and stable message IDs; uncertain WhatsApp acknowledgements may still produce duplicate messages. Terminal-content cleanup and reminders run in the existing worker, with no separate scheduled service or ongoing AI calls.
+
+`npm run eval:tasks` runs synthetic English/Hebrew/mixed-language scenarios against OpenAI with an isolated $0.50 per-run ceiling. It does not connect to WhatsApp or Microsoft. Offline task tests run with `npm test`.
+
 **Voice update — 14 September 2026 (local implementation; not deployed):** voice notes receive text plus an AI-generated WhatsApp voice reply. Typed messages receive text unless audio is explicitly requested. English, Hebrew, and mixed-language synthetic voice checks pass. The user selected Nova after reviewing bilingual samples; live WhatsApp audio delivery remains to be checked.
 
 **Status:** installed at `/opt/mazkir` on the DigitalOcean Droplet `YOUR_DROPLET`. Container build, 22 offline tests, and the server demo pass. Family contacts and the user's OpenAI key are configured on the server; five synthetic OpenAI checks passed there. Microsoft organizer authorization is saved and calendar access is verified. Healthchecks accepted a diagnostic log from the Droplet; email delivery still needs testing. On 11 September 2026, the dedicated WhatsApp account was paired and the service started; reconnection from saved credentials was verified. A consistent database backup was created before startup. No real invitations have been sent. Groceries and group chats are deferred.

@@ -9,7 +9,10 @@ import { Store, type Job } from './store.js';
 import { Speech } from './speech.js';
 import { Language } from './language.js';
 
-const cfg = config();
+const cfg = { ...config(), members: [
+  { name: 'Synthetic Parent', phone: '15550000001', email: 'a@example.com' },
+  { name: 'Synthetic Partner', phone: '15550000002', email: 'b@example.com' },
+] };
 const output = resolve(process.argv[2] ?? 'voice-samples');
 const store = new Store(mkdtempSync(join(tmpdir(), 'mazkir-voice-eval-')), randomBytes(32).toString('hex'));
 const cap = 0.50;
@@ -29,7 +32,7 @@ try {
       writeFileSync(join(output, filename), Buffer.from(audio.data, 'base64'));
       console.log(`SAMPLE ${filename}: ${audio.seconds.toFixed(1)} seconds, mono Opus`);
       if (voice !== 'nova') continue;
-      const job: Job = { id: sample.name, chat: sample.name, actor: 'Synthetic Parent',
+      const job: Job = { id: sample.name, chat: cfg.members[0]!.phone, actor: 'Synthetic Parent',
         at: new Date().toISOString(), text: '', audio, status: 'pending', attempts: 0, nextAt: 0 };
       job.text = await language.transcribe(job);
       const intent = await language.interpret(job, []);
@@ -45,7 +48,7 @@ try {
     'מה יש לי מחר? תענה בהודעה קולית באנגלית.',
     'List my agenda for tomorrow.',
   ].entries()) {
-    const result = await language.interpret({ id: `request-${index}`, chat: `request-${index}`,
+    const result = await language.interpret({ id: `request-${index}`, chat: cfg.members[0]!.phone,
       actor: 'Synthetic Parent', at: new Date().toISOString(), text, status: 'pending', attempts: 0, nextAt: 0 }, []);
     assert.equal(result.action, 'list');
     assert.equal(result.voiceReply, index < 2);

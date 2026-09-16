@@ -33,6 +33,7 @@ export class Calendar {
     return events.slice(0, POLICY.maxEvents);
   }
   async prepare(intent: Intent, job: Job, candidates: CalendarEvent[]): Promise<CalendarPlan> {
+    if (intent.action === 'task') throw new UserError('Task requests must use the shared task list.', 'בקשות למשימות צריכות להשתמש ברשימת המשימות המשותפת.');
     const plan: CalendarPlan = { intent, steps: [] };
     if (intent.action === 'clarify') return plan;
     if (intent.action === 'list') {

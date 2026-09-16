@@ -1,5 +1,9 @@
 # Mazkir: family scheduling agent
 
+## Approved shared-task extension — 16 September 2026
+
+The user approved and requested implementation of the [shared-task specification](SHARED_TASKS_SPEC.md). It adds a shared WhatsApp task list with optional ownership, deadlines, notes, and two-notification reminders. Task state and delivery intents are encrypted in the existing SQLite vault. The worker serializes task changes and notification delivery; no Outlook events are created for tasks. See the specification for agreed behavior and README/VALIDATION for implementation and rollout status. The existing no-WhatsApp-reminders rule below continues to apply to calendar events; task reminders are a separate feature.
+
 ## Approved voice extension — 14 September 2026
 
 The user approved implementation after the grill-me interview. Receive Hebrew, English, and mixed voice notes up to three minutes. Voice input gets speech plus matching text; typed input gets text unless speech is explicitly requested. Follow explicit language requests or the message's main language, preserving names and titles. Clear requests execute immediately, with clarification only for ambiguity. Short responses match in both formats; long agendas have a short spoken summary and full text. Audio failure must not repeat a calendar change: send the text confirmation and a brief audio-unavailable notice. Keep the $8 monthly AI cap and prioritize core processing. Use one shared voice, selected after bilingual sample review.
