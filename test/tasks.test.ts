@@ -291,7 +291,23 @@ test('structured response includes task schema and task context, preserving task
   const result = await new Language(cfg, f.store, client).interpretInitial(f.makeJob());
   assert.equal(result.task!.owner, 'self'); assert.equal(result.action, 'task');
   assert.match(prompt, /deadline NEVER implies a reminder/); assert.match(prompt, /INITIAL PASS/);
+  assert.match(prompt, /Task deadlines and reminders are optional/);
+  assert.match(prompt, /A date-only deadline needs no hour/);
   assert.ok(prompt.includes(a));
+});
+
+test('Hebrew title-only task persists and appears in lists without a deadline or reminders', t => {
+  const f = fixture(t), job = f.makeJob();
+  job.text = 'תוסיף משימה לנפח גלגלי אופניים';
+  f.store.enqueue(job);
+  const plan = f.tasks.apply(intent(command({ title: 'לנפח גלגלי אופניים' }), 'he'), job);
+  assert.match(plan.reply, /ללא מועד יעד/);
+  assert.equal(f.state().tasks.length, 1);
+  assert.equal(f.state().tasks[0]!.due, null);
+  assert.deepEqual(f.state().tasks[0]!.reminders, []);
+  assert.equal(f.state().notices.length, 0);
+  assert.match(f.apply({ operation: 'list' }).reply, /לנפח גלגלי אופניים/);
+  assert.match(f.apply({ operation: 'list', filter: 'overdue' }).reply, /Open tasks — 0/);
 });
 
 test('delivery commit failure preserves notification for stable-ID retry instead of silently dropping it', async t => {

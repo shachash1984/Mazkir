@@ -10,7 +10,7 @@ export const taskCommandSchema = z.object({
   targetTitle: z.string().nullable().describe('Existing task title used to identify the target'),
   title: z.string().nullable(), note: z.string().nullable(), clearNote: z.boolean(),
   owner: z.string().nullable().describe('Configured phone, self, unassigned; null means unchanged/default'),
-  due: z.string().nullable().describe('YYYY-MM-DD or local ISO datetime'), clearDue: z.boolean(),
+  due: z.string().nullable().describe('Optional deadline: YYYY-MM-DD (no hour required) or local ISO datetime. Null means no deadline on create, unchanged on edit.'), clearDue: z.boolean(),
   timezone: z.string().nullable(),
   reminder: z.object({
     at: z.string().nullable().describe('Local ISO date or datetime. Date alone uses 09:00.'),

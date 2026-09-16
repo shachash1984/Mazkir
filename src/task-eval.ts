@@ -19,7 +19,11 @@ const members = [
 const cfg = { ...config(), members, aiCap: 0.50 };
 const store = new Store(mkdtempSync(join(tmpdir(), 'mazkir-task-eval-')), randomBytes(32).toString('hex'));
 const language = new Language(cfg, store), tasks = new Tasks(store, members);
-const cases: { text: string; check(i: Intent): void; apply?: boolean }[] = [
+const cases: { text: string; check(i: Intent): void; apply?: boolean; history?: { role: string; text: string }[] }[] = [
+  { text: 'תוסיף משימה לנפח גלגלי אופניים',
+    check: i => { assert.equal(i.action, 'task'); assert.equal(i.question, null); assert.equal(i.task?.operation, 'create'); assert.match(i.task.title ?? '', /גלגלי אופניים/); assert.equal(i.task.due, null); assert.equal(i.task.reminder, null); } },
+  { text: 'Add a task to buy a bicycle pump.',
+    check: i => { assert.equal(i.action, 'task'); assert.equal(i.question, null); assert.equal(i.task?.operation, 'create'); assert.equal(i.task.due, null); assert.equal(i.task.reminder, null); } },
   { text: 'Add a shared task: submit the school form by September 18, 2099.', apply: true,
     check: i => { assert.equal(i.action, 'task'); assert.equal(i.task?.operation, 'create'); assert.ok(i.task.owner === null || i.task.owner === 'unassigned'); assert.equal(i.task.due, '2099-09-18'); assert.equal(i.task.reminder, null); } },
   { text: 'תוסיף משימה לדנה: להזמין תור לרופא שיניים.', apply: true,
@@ -42,10 +46,15 @@ const cases: { text: string; check(i: Intent): void; apply?: boolean }[] = [
     check: i => { assert.ok(i.action === 'clarify' || (i.action === 'task' && i.task?.repeating)); } },
   { text: 'Schedule a dentist appointment on September 20, 2099 at 10 AM.',
     check: i => { assert.equal(i.action, 'create'); assert.equal(i.task, null); assert.ok(i.start?.startsWith('2099-09-20T10:00')); } },
+  { text: 'תוסיף משימה לנפח גלגלי אופניים', apply: true,
+    history: [{ role: 'user', text: 'תוסיף משימה לנפח גלגלי אופניים' },
+      { role: 'assistant', text: 'באיזה תאריך ושעה לקבוע את מועד היעד?' }],
+    check: i => { assert.equal(i.action, 'task'); assert.equal(i.question, null); assert.equal(i.task?.operation, 'create'); assert.match(i.task.title ?? '', /גלגלי אופניים/); assert.equal(i.task.due, null); assert.equal(i.task.reminder, null); } },
 ];
 let last: Intent | undefined;
 try {
   for (const [index, item] of cases.entries()) {
+    for (const message of item.history ?? []) store.addHistory(members[0]!.phone, message.role, message.text);
     const job: Job = { id: `task-eval-${index}`, chat: members[0]!.phone, actor: members[0]!.name,
       text: item.text, at: new Date().toISOString(), status: 'pending', attempts: 0, nextAt: 0 };
     last = await language.interpretInitial(job);
