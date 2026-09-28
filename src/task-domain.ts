@@ -27,9 +27,9 @@ export type TaskCommand = z.infer<typeof taskCommandSchema>;
 export type TaskLanguage = 'en' | 'he';
 export interface TaskDeadline { value: string; zone: string; }
 export interface ReminderRecipient {
-  phone: string; sent: number; first: number; second: number; lastSent?: number;
+  phone: string; sent: number; first: number; lastSent?: number;
   attempts: number; retryAt: number; blocked?: boolean;
-  delivery?: { id: string; text: string; consumed: number };
+  delivery?: { id: string; text: string };
 }
 export interface TaskReminder {
   id: string; followOwner: boolean; language: TaskLanguage; zone: string;
@@ -57,12 +57,6 @@ export function dueMillis(due: TaskDeadline): number {
 }
 export function reminderTime(value: string, zone: string): number {
   return localTime(value.length === 10 ? `${value}T${String(POLICY.taskReminderHour).padStart(2, '0')}:00:00` : value, zone).toMillis();
-}
-export function nextReminder(first: number, zone: string): number {
-  const dt = DateTime.fromMillis(first, { zone });
-  let next = dt.plus({ days: 1 });
-  if (next.toMillis() - first < POLICY.taskReminderGapHours * 3600000) next = dt.plus({ days: 2 });
-  return next.toMillis();
 }
 export function relativeTime(due: TaskDeadline | null, days: number, time: string): number {
   if (!due) return taskError('Set a deadline before a deadline-relative reminder.', 'יש לקבוע מועד יעד לפני תזכורת יחסית אליו.');

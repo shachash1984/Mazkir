@@ -35,25 +35,23 @@ Without an explicit recipient, remind the owner; for an unassigned task, remind 
 
 Owner-following reminders switch recipients on reassignment. The new owner inherits only the remaining notifications at their existing scheduled times; reassignment does not reset the notification count. The immediate reassignment update is separate from these reminders. Explicitly selected recipients stay unchanged.
 
-### Two notifications
+### One notification
 
-Each reminder request schedules two notifications, at least 24 hours apart. Completion or cancellation stops any remaining notifications.
-
-The second notification is at the same local time the next day, provided at least 24 hours have elapsed. If daylight saving makes that interval shorter, use the same local time on the following day. If the task is overdue at delivery, state that in the reminder. Do not send further notifications without a new request.
+Each reminder request schedules one notification per recipient. Completion or cancellation stops pending notifications. If the task is overdue at delivery, state that in the reminder. Do not send further notifications without a new request. Previously stored two-notification schedules use only their first notification; if it was already delivered, the schedule is finished.
 
 For a reminder date without a time, use 09:00 Israel time and confirm the exact date and time. Repeating reminders such as "every day until done" are deferred; explain the limit when requested.
 
 ### Changing reminders
 
-A new reminder request replaces pending reminders for its intended recipients with a fresh two-notification schedule. "Remind me tomorrow at 10" replaces the sender's pending schedule; "remind both of us" replaces both schedules. Confirm the resulting change.
+A new reminder request replaces pending reminders for its intended recipients with a single notification. "Remind me tomorrow at 10" replaces the sender's pending schedule; "remind both of us" replaces both schedules. Confirm the resulting change.
 
-Changing a deadline moves reminders explicitly expressed relative to that deadline, such as "the day before it is due." Reminders for an explicit date and time remain fixed. Confirm any schedule changes along with the deadline change. A deadline change does not reset delivered notifications. If the first notification was already delivered, move only the remaining relative notification, preserving at least 24 hours from the first delivery. If its revised time has already passed, send it once as a catch-up when that spacing permits.
+Changing a deadline moves unsent reminders explicitly expressed relative to that deadline, such as "the day before it is due." Reminders for an explicit date and time remain fixed. Confirm any schedule changes along with the deadline change. A deadline change does not restart delivered reminders. If a revised pending time has already passed, send one catch-up notification.
 
-Snoozing affects only the requester's notifications. It does not change the deadline or the other person's notifications, and delays an existing notification rather than adding another. After the first delivery, snoozing moves the remaining notification while preserving at least 24 hours from the first delivery. After both notifications have been delivered, explain that no notifications remain and ask whether to create a new two-notification reminder; do not create it without an affirmative answer.
+Snoozing affects only the requester's pending reminder. It does not change the deadline or the other person's reminder, and delays an existing notification rather than adding another. After delivery, explain that no notifications remain and ask whether to create a new reminder; do not create it without an affirmative answer.
 
 ### Recovery after downtime
 
-If reminders became due while Mazkir was offline, send one catch-up notification when the task is still active. If both notifications were missed, combine them into that single notification and finish the schedule. If only the first was missed, schedule the second using the agreed spacing from actual delivery. Evaluate catch-up per recipient so one person's receipt does not consume the other person's reminder.
+If a reminder became due while Mazkir was offline, send one catch-up notification when the task is still active, then finish that recipient's schedule. Evaluate catch-up per recipient so one person's receipt does not consume the other person's reminder.
 
 ## Notifications about task changes
 
@@ -126,13 +124,13 @@ The local implementation follows these engineering requirements:
 2. An unspecified owner remains unassigned; a sender-relative owner resolves correctly; assignment to the other person produces one notification.
 3. A due date alone creates no reminders. Date-only overdue classification changes at the local date boundary.
 4. A reminder with no specified time uses 09:00 Israel time and confirms that timestamp.
-5. A reminder produces two notifications at least 24 hours apart, including across daylight saving changes, and no third notification.
-6. Completing or canceling before the second notification prevents its delivery and notifies the other person once.
+5. A reminder produces one notification per recipient and no automatic follow-up, including for previously stored schedules.
+6. Completing or canceling before a pending notification prevents its delivery and notifies the other person once.
 7. Explicit reminder recipients survive owner changes; owner-following recipients follow the agreed reassignment policy.
 8. A new reminder request replaces only its intended recipients' pending schedules.
 9. Snoozing one person's notification leaves the other person's schedule and the task deadline unchanged.
 10. Deadline-relative reminders move when the deadline changes; fixed-time reminders do not.
-11. Downtime spanning one or both reminder times produces the agreed catch-up behavior without a burst of stale notifications.
+11. Downtime spanning the reminder time produces one catch-up per recipient without automatic follow-ups.
 12. Each person's numbered list retains its own task references; later task changes are checked before executing follow-up commands.
 13. A likely active duplicate prompts a choice; a completed or canceled match does not.
 14. Reopening retains task content, owner, and deadline, notifies the other person, and does not restart old reminders.
@@ -141,7 +139,7 @@ The local implementation follows these engineering requirements:
 
 ## Implementation notes
 
-- `src/task-domain.ts` defines validated commands, task/reminder state, deadline parsing, and reminder spacing. `src/tasks.ts` owns task operations, filtering, retention, durable notifications, and reminder delivery.
+- `src/task-domain.ts` defines validated commands, task/reminder state, deadline and reminder time parsing. `src/tasks.ts` owns task operations, filtering, retention, durable notifications, and reminder delivery.
 - Task state uses the existing encrypted SQLite vault; no new provider account or database schema migration is needed. A task change, notification intent, and replay receipt commit in one SQLite transaction. The existing job queue delivers text/voice receipts afterward.
 - The worker serializes task changes and outbound task delivery. Task requests take an initial interpretation pass without fetching Outlook events. Calendar edits still load calendar candidates before interpreting the final calendar action.
 - Proactive task updates and reminders are text messages. Voice requests retain the existing text-plus-speech reply behavior. Long task replies provide their full text with a brief spoken pointer to it.

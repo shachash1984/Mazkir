@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { DateTime } from 'luxon';
 import { Store, type Job } from '../src/store.js';
 import { Tasks } from '../src/tasks.js';
-import { deadline, dueMillis, nextReminder, reminderTime, type SharedTask, type TaskCommand, type TaskNotice } from '../src/task-domain.js';
+import { deadline, dueMillis, reminderTime, type SharedTask, type TaskCommand, type TaskNotice } from '../src/task-domain.js';
 import { type Intent } from '../src/domain.js';
 import { POLICY, UserError } from '../src/config.js';
 import { Worker } from '../src/worker.js';
@@ -89,54 +89,53 @@ test('assignment, edits, completion and restoration have the specified notificat
 test('date-only deadlines expire at midnight; reminders default to 09:00 and span DST safely', () => {
   assert.equal(dueMillis(deadline('2026-09-18', POLICY.timezone)), ms('2026-09-19T00:00:00'));
   assert.equal(reminderTime('2026-09-18', POLICY.timezone), ms('2026-09-18T09:00:00'));
-  const spring = ms('2027-03-25T09:00:00');
-  assert.equal(nextReminder(spring, POLICY.timezone), ms('2027-03-27T09:00:00'));
-  const fall = ms('2026-10-24T09:00:00');
-  assert.equal(nextReminder(fall, POLICY.timezone), ms('2026-10-25T09:00:00'));
+  for (const day of ['2027-03-26', '2026-10-25']) {
+    assert.equal(reminderTime(day, POLICY.timezone), ms(day + 'T09:00:00'));
+  }
   assert.throws(() => deadline('2026-02-30', POLICY.timezone), UserError);
 });
 
-test('two notifications per recipient, no third, and overdue messages', async t => {
+test('one notification per recipient, no follow-up, and overdue messages', async t => {
   const f = fixture(t);
-  f.apply({ due: '2026-09-15', reminder: reminder('2026-09-15') });
+  f.apply({ due: '2026-09-14', reminder: reminder('2026-09-15') });
   f.setTime('2026-09-15T09:00:00'); await f.deliver(); await f.deliver();
   assert.deepEqual(f.sent.map(s => s.chat), [a, b]);
   f.setTime('2026-09-16T08:59:59'); await f.deliver(); assert.equal(f.sent.length, 2);
   f.setTime('2026-09-16T09:00:00'); await f.deliver(); await f.deliver();
-  assert.equal(f.sent.length, 4); assert.match(f.sent.at(-1)!.text, /overdue/);
-  f.setTime('2026-09-20T09:00:00'); await f.deliver(); assert.equal(f.sent.length, 4);
-  assert.equal(new Set(f.sent.map(s => s.id)).size, 4);
+  assert.equal(f.sent.length, 2); assert.match(f.sent.at(-1)!.text, /Overdue/);
+  assert.equal(f.sent[0]!.text, '🔔 Reminder: Book dentist\nOverdue — a little nudge from me 😉');
+  f.setTime('2026-09-20T09:00:00'); await f.deliver(); assert.equal(f.sent.length, 2);
+  assert.equal(new Set(f.sent.map(s => s.id)).size, 2);
   assert.match(f.store.history(a).at(-1)!.content, /Reminder/);
 });
 
-test('downtime collapses two missed notifications and delays the remaining one from actual delivery', async t => {
+test('downtime sends one catch-up without scheduling a follow-up', async t => {
   const f = fixture(t);
   f.apply({ owner: 'self', reminder: reminder('2026-09-15T09:00:00') });
   f.setTime('2026-09-15T12:00:00'); await f.deliver();
-  assert.equal(f.state().tasks[0]!.reminders[0]!.recipients[0]!.second, ms('2026-09-16T12:00:00'));
+  assert.equal(f.state().tasks[0]!.reminders[0]!.recipients[0]!.sent, 1);
   f.setTime('2026-09-16T11:00:00'); await f.deliver(); assert.equal(f.sent.length, 1);
-  f.setTime('2026-09-16T12:00:00'); await f.deliver(); assert.equal(f.sent.length, 2);
+  f.setTime('2026-09-16T12:00:00'); await f.deliver(); assert.equal(f.sent.length, 1);
   f.apply({ title: 'Other task', reminder: reminder('2026-09-17T09:00:00', 'self') });
   f.setTime('2026-09-20T12:00:00'); await f.deliver(); await f.deliver();
-  assert.equal(f.sent.length, 3);
-  assert.equal(f.state().tasks[1]!.reminders[0]!.recipients[0]!.sent, 2);
+  assert.equal(f.sent.length, 2);
+  assert.equal(f.state().tasks[1]!.reminders[0]!.recipients[0]!.sent, 1);
 });
 
 test('snoozing only changes the sender; exhausted schedules require a new request', async t => {
   const f = fixture(t);
   f.apply({ reminder: reminder('2026-09-15') });
   const id = f.state().tasks[0]!.id;
-  f.setTime('2026-09-15T09:00:00'); await f.deliver(); await f.deliver();
   f.apply({ operation: 'snooze', taskId: id, reminder: reminder('2026-09-17T10:00:00') });
   const recipients = f.state().tasks[0]!.reminders[0]!.recipients;
-  assert.equal(recipients.find(p => p.phone === a)!.second, ms('2026-09-17T10:00:00'));
-  assert.equal(recipients.find(p => p.phone === b)!.second, ms('2026-09-16T09:00:00'));
+  assert.equal(recipients.find(p => p.phone === a)!.first, ms('2026-09-17T10:00:00'));
+  assert.equal(recipients.find(p => p.phone === b)!.first, ms('2026-09-15T09:00:00'));
   f.setTime('2026-09-17T10:00:00'); await f.deliver(); await f.deliver();
   assert.throws(() => f.apply({ operation: 'snooze', taskId: id, reminder: reminder('2026-09-18T10:00:00') }), /No notifications remain/);
-  assert.equal(f.state().tasks[0]!.reminders[0]!.recipients[0]!.sent, 2);
+  assert.equal(f.state().tasks[0]!.reminders[0]!.recipients[0]!.sent, 1);
 });
 
-test('new reminder request replaces only intended recipients with a fresh pair', t => {
+test('new reminder request replaces only intended recipients with a single notification', t => {
   const f = fixture(t);
   f.apply({ reminder: reminder('2026-09-16') });
   const id = f.state().tasks[0]!.id;
@@ -156,7 +155,7 @@ test('reassignment preserves consumed count and explicit recipient selection', a
   f.setTime('2026-09-15T09:00:00'); await f.deliver();
   f.apply({ operation: 'edit', taskId: id, title: null, owner: b });
   const p = f.state().tasks[0]!.reminders[0]!.recipients[0]!;
-  assert.equal(p.phone, b); assert.equal(p.sent, 1); assert.equal(p.second, ms('2026-09-16T09:00:00'));
+  assert.equal(p.phone, b); assert.equal(p.sent, 1);
   f.apply({ operation: 'remind', taskId: id, reminder: reminder('2026-09-17', 'self') });
   f.apply({ operation: 'edit', taskId: id, title: null, owner: 'unassigned' });
   assert.equal(f.state().tasks[0]!.reminders.find(r => !r.followOwner)!.recipients[0]!.phone, a);
@@ -172,7 +171,7 @@ test('relative deadline edits move only unsent notifications; fixed reminders st
   f.apply({ operation: 'edit', taskId: id, title: null, due: '2026-09-15' });
   const task = f.state().tasks[0]!;
   assert.equal(task.reminders[0]!.recipients[0]!.sent, 1);
-  assert.equal(task.reminders[0]!.recipients[0]!.second, ms('2026-09-17T09:00:00'));
+  assert.equal(task.reminders[0]!.recipients[0]!.first, ms('2026-09-16T09:00:00'));
   assert.equal(task.reminders[1]!.recipients[0]!.first, ms('2026-09-20T09:00:00'));
   f.apply({ operation: 'edit', taskId: id, title: null, clearDue: true });
   assert.equal(f.state().tasks[0]!.reminders.length, 1);
@@ -189,7 +188,7 @@ test('completion and cancellation stop pending deliveries; restore never restart
   await f.deliver();
   f.apply({ operation: 'restore', taskId: id }); await f.deliver();
   f.setTime('2026-09-18T09:00:00'); await f.deliver();
-  assert.equal(f.sent.filter(s => s.text.startsWith('Reminder')).length, 1);
+  assert.equal(f.sent.filter(s => s.text.startsWith('🔔 Reminder')).length, 1);
   f.apply({ operation: 'remind', taskId: id, reminder: reminder('2026-09-19') });
   f.apply({ operation: 'cancel', taskId: id });
   assert.equal(f.state().tasks[0]!.reminders.length, 0);
@@ -368,4 +367,24 @@ test('calendar updates still obtain candidates after the initial routing pass', 
   const worker = new Worker(f.store, new Calendar(graph, { members, organizerEmail: 'agent@example.com' }), language, f.messenger, () => {}, undefined, f.tasks);
   await worker.tick(); await worker.tick();
   assert.equal(reads, 1); assert.equal(interpretations, 1); assert.match(f.sent[0]!.text, /Which event/);
+});
+
+test('legacy second reminders are ignored, including blocked retries, after restart', async t => {
+  const f = fixture(t);
+  f.apply({ reminder: reminder('2026-09-15') });
+  const state = f.state();
+  const recipients = state.tasks[0]!.reminders[0]!.recipients;
+  Object.assign(recipients[0]!, { sent: 1, second: ms('2026-09-16T09:00:00'), blocked: true,
+    delivery: { id: 'legacy-second', text: 'Old follow-up', consumed: 1 } });
+  Object.assign(recipients[1]!, { second: ms('2026-09-16T09:00:00'),
+    delivery: { id: 'legacy-first', text: 'Pending first reminder', consumed: 2 } });
+  f.store.set('shared-tasks', state);
+  const restarted = new Tasks(f.store, members, () => ms('2026-09-20T09:00:00'));
+  assert.equal(restarted.hasBlocked(), false);
+  assert.deepEqual(restarted.blockedIds(), []);
+  assert.doesNotMatch(f.apply({ operation: 'details', taskId: state.tasks[0]!.id }).reply, /16\/09\/2026/);
+  await restarted.deliver(f.messenger, () => assert.fail('Unexpected alert'));
+  await restarted.deliver(f.messenger, () => assert.fail('Unexpected alert'));
+  assert.deepEqual(f.sent.map(s => [s.chat, s.id]), [[b, 'legacy-first']]);
+  assert.equal(f.state().tasks[0]!.reminders[0]!.recipients[1]!.sent, 1);
 });

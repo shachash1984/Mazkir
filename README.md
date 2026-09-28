@@ -2,14 +2,14 @@
 
 A scheduling assistant for two private WhatsApp chats. It creates events in its own Outlook.com calendar and invites both configured work addresses. It also updates/cancels its events and answers agenda questions. Text/voice interpretation uses OpenAI; WhatsApp uses Baileys.
 
-**Shared tasks — 16 September 2026 (local implementation; not deployed):** both family members can manage a shared task list, assign owners, add deadlines and notes, and request two WhatsApp reminders at least 24 hours apart. See the [approved specification](SHARED_TASKS_SPEC.md).
+**Shared tasks — 16 September 2026 (local implementation; not deployed):** both family members can manage a shared task list, assign owners, add deadlines and notes, and request a single WhatsApp reminder per recipient. See the [approved specification](SHARED_TASKS_SPEC.md).
 
 ## Shared tasks
 
 Use either existing private chat, in English, Hebrew, or a mixture. Examples:
 
 - “Add a task to submit the school form by Friday.” A deadline alone sends no reminders.
-- “Remind me to book the dentist tomorrow.” This creates a task assigned to you, with reminders at 09:00 Israel time and the same local time the following day, subject to the 24-hour minimum.
+- “Remind me to book the dentist tomorrow.” This creates a task assigned to you, with one reminder at 09:00 Israel time.
 - “Assign the school form task to [your spouse's name].” They receive an assignment update.
 - “Show our tasks,” “What's on my list?”, “What's overdue?”, or “What's due this week?”
 - “Mark 2 done,” “Show details for 3,” or “Remind both of us about 1 the day before it's due at 8 PM.” Numbers refer to the last task list in your own chat.
