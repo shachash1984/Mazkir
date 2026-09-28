@@ -4,7 +4,7 @@ import { POLICY, type Member } from './config.js';
 import { Store, type Job } from './store.js';
 import type { Messenger } from './worker.js';
 import type { Intent } from './domain.js';
-import { deadline, dueMillis, nextReminder, relativeTime, reminderTime, taskCommandSchema, taskError,
+import { deadline, dueMillis, relativeTime, reminderTime, taskCommandSchema, taskError,
   type SharedTask, type TaskCommand, type TaskLanguage, type TaskNotice, type TaskReminder, type ReminderRecipient } from './task-domain.js';
 
 export interface TaskPlan { kind: 'task'; intent: Intent; reply: string; }
@@ -38,9 +38,16 @@ export class Tasks {
     const due = task.due ? `${task.status === 'active' && dueMillis(task.due) <= this.now() ? choose(he, 'overdue', 'באיחור') : choose(he, 'due', 'יעד')} ${task.due.value.replace('T', ' ')} (${task.due.zone})` : choose(he, 'no deadline', 'ללא מועד יעד');
     return `${task.title} — ${this.name(task.owner, he)} · ${due}`;
   }
+  private reminderText(task: SharedTask, he: boolean): string {
+    const overdue = task.due && dueMillis(task.due) <= this.now();
+    const nudge = overdue
+      ? choose(he, 'Overdue — a little nudge from me 😉', 'כבר באיחור — דחיפה קטנה ממני 😉')
+      : choose(he, 'Just leaving this here 😉', 'רק מניח את זה כאן 😉');
+    return `🔔 ${choose(he, 'Reminder', 'תזכורת')}: ${task.title}\n${nudge}`;
+  }
   private schedules(task: SharedTask, he: boolean): string {
-    const lines = task.reminders.flatMap(r => r.recipients.filter(p => p.sent < 2).map(p =>
-      `${this.name(p.phone, he)}: ${p.sent === 0 ? this.stamp(p.first, r.zone) + '; ' : ''}${this.stamp(p.second, r.zone)}`));
+    const lines = task.reminders.flatMap(r => r.recipients.filter(p => p.sent === 0).map(p =>
+      `${this.name(p.phone, he)}: ${this.stamp(p.first, r.zone)}`));
     return lines.length ? `\n${choose(he, 'Reminders', 'תזכורות')}:\n${lines.join('\n')}` : '';
   }
   context(chat: string): object {
@@ -119,7 +126,7 @@ export class Tasks {
     for (const r of task.reminders) r.recipients = r.recipients.filter(p => !phones.includes(p.phone));
     task.reminders = task.reminders.filter(r => r.recipients.length);
     task.reminders.push({ id: idFor(job.id + ':reminder'), followOwner: command.recipients === 'default', language, zone: reminderZone, relative,
-      recipients: phones.map(phone => ({ phone, first, second: nextReminder(first, reminderZone), sent: 0, attempts: 0, retryAt: 0 })) });
+      recipients: phones.map(phone => ({ phone, first, sent: 0, attempts: 0, retryAt: 0 })) });
   }
   private reassign(task: SharedTask): void {
     const phones = task.owner ? [task.owner] : this.members.map(m => m.phone);
@@ -141,9 +148,8 @@ export class Tasks {
       if (!task.due) { r.recipients = []; continue; }
       const first = relativeTime(task.due, r.relative!.days, r.relative!.time);
       r.zone = task.due.zone;
-      for (const p of r.recipients.filter(p => p.sent < 2)) {
+      for (const p of r.recipients.filter(p => p.sent === 0)) {
         p.first = first;
-        p.second = Math.max(nextReminder(first, r.zone), (p.lastSent ?? -Infinity) + POLICY.taskReminderGapHours * 3600000);
         p.delivery = undefined; p.attempts = 0; p.retryAt = 0; p.blocked = false;
       }
     }
@@ -153,7 +159,7 @@ export class Tasks {
     this.member(job.chat);
     const command = taskCommandSchema.parse(intent.task);
     if (intent.question || intent.action !== 'task') taskError('Please clarify the task request.', 'נא להבהיר את בקשת המשימה.');
-    if (command.repeating) taskError('Recurring tasks and repeating reminders are not supported yet. Each reminder request sends two notifications; snoozing is supported.', 'משימות ותזכורות חוזרות עדיין אינן נתמכות. כל בקשת תזכורת כוללת שתי הודעות; אפשר לדחות תזכורת.');
+    if (command.repeating) taskError('Recurring tasks and repeating reminders are not supported yet. Each reminder request sends one notification; snoozing is supported.', 'משימות ותזכורות חוזרות עדיין אינן נתמכות. כל בקשת תזכורת כוללת הודעה אחת; אפשר לדחות תזכורת.');
     const he = intent.language === 'he', now = this.now(), zone = command.timezone ?? POLICY.timezone;
     this.store.db.exec('BEGIN IMMEDIATE');
     try {
@@ -223,13 +229,12 @@ export class Tasks {
             if (!command.reminder?.at) taskError('Until when should I snooze it?', 'עד מתי לדחות?');
             const time = reminderTime(command.reminder!.at!, zone);
             if (time <= now) taskError('Choose a future snooze time.', 'נא לבחור מועד עתידי לדחייה.');
-            const pending = task.reminders.flatMap(r => r.recipients.map(p => ({ r, p }))).filter(({ p }) => p.phone === job.chat && p.sent < 2);
-            if (!pending.length) taskError('No notifications remain for you. Create a new two-notification reminder?', 'לא נותרו עבורך תזכורות. ליצור תזכורת חדשה עם שתי הודעות?');
-            for (const { r, p } of pending) {
-              const scheduled = p.sent === 0 ? p.first : p.second;
+            const pending = task.reminders.flatMap(r => r.recipients.map(p => ({ r, p }))).filter(({ p }) => p.phone === job.chat && p.sent === 0);
+            if (!pending.length) taskError('No notifications remain for you. Create a new reminder?', 'לא נותרו עבורך תזכורות. ליצור תזכורת חדשה?');
+            for (const { p } of pending) {
+              const scheduled = p.first;
               if (time < scheduled) taskError('Snoozing must postpone the pending notification. To choose an earlier time, request a new reminder.', 'דחייה חייבת להיות למועד מאוחר יותר. למועד מוקדם יותר, בקשו תזכורת חדשה.');
-              if (p.sent === 0) { p.first = time; p.second = nextReminder(time, r.zone); }
-              else p.second = Math.max(time, (p.lastSent ?? 0) + POLICY.taskReminderGapHours * 3600000);
+              p.first = time;
               p.delivery = undefined; p.attempts = 0; p.retryAt = 0; p.blocked = false;
             }
           } else if (command.reminder) this.setReminder(task, command.reminder, job, intent.language, zone);
@@ -254,7 +259,7 @@ export class Tasks {
   }
   hasBlocked(): boolean {
     const state = this.state();
-    return state.notices.some(n => n.blocked) || state.tasks.some(t => t.reminders.some(r => r.recipients.some(p => p.blocked)));
+    return state.notices.some(n => n.blocked) || state.tasks.some(t => t.reminders.some(r => r.recipients.some(p => p.sent === 0 && p.blocked)));
   }
   resume(id: string): boolean {
     const state = this.state();
@@ -268,7 +273,7 @@ export class Tasks {
   }
   blockedIds(): string[] {
     const state = this.state();
-    return [...state.notices.filter(n => n.blocked).map(n => n.id), ...state.tasks.flatMap(t => t.reminders.filter(r => r.recipients.some(p => p.blocked)).map(r => r.id))];
+    return [...state.notices.filter(n => n.blocked).map(n => n.id), ...state.tasks.flatMap(t => t.reminders.filter(r => r.recipients.some(p => p.sent === 0 && p.blocked)).map(r => r.id))];
   }
   prune(): void {
     const state = this.state(), cutoff = this.now() - POLICY.taskRetentionDays * 86400000;
@@ -302,11 +307,10 @@ export class Tasks {
       this.recordDelivery(state, notice.phone, notice.taskId, notice.text); return;
     }
     for (const task of state.tasks.filter(t => t.status === 'active')) for (const r of task.reminders) for (const p of r.recipients) {
-      if (p.sent >= 2 || p.blocked || p.retryAt > now || (p.sent === 0 ? p.first : p.second) > now) continue;
+      if (p.sent > 0 || p.blocked || p.retryAt > now || p.first > now) continue;
       if (!p.delivery) {
         const lang = this.store.get<TaskLanguage>('task-language:' + p.phone) ?? r.language;
-        p.delivery = { id: `${r.id}:${p.phone}:${p.sent}`, text: `${choose(lang === 'he', 'Reminder', 'תזכורת')}:\n${this.summary(task, lang === 'he')}`,
-          consumed: p.sent === 0 && p.second <= now ? 2 : 1 };
+        p.delivery = { id: `${r.id}:${p.phone}:${p.sent}`, text: this.reminderText(task, lang === 'he') };
         this.save(state);
       }
       try {
@@ -316,8 +320,7 @@ export class Tasks {
         if (p.attempts >= POLICY.maxAttempts) { p.blocked = true; alert(r.id); }
         this.save(state); return;
       }
-      p.sent += p.delivery.consumed; p.lastSent = this.now();
-      if (p.sent === 1) p.second = nextReminder(p.lastSent, r.zone);
+      p.sent = 1; p.lastSent = this.now();
       const text = p.delivery.text;
       p.delivery = undefined; p.attempts = 0; p.retryAt = 0;
       this.recordDelivery(state, p.phone, task.id, text); return;

@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 export const POLICY = {
   timezone: 'Asia/Jerusalem', durationMinutes: 30, retentionDays: 30,
-  taskRetentionDays: 90, taskReminderHour: 9, taskReminderGapHours: 24,
+  taskRetentionDays: 90, taskReminderHour: 9,
   taskTitleChars: 200, taskNoteChars: 4000, taskContextLimit: 100, taskContextBytes: 16000,
   textModel: 'gpt-4.1-mini-2025-04-14', transcriptionModel: 'gpt-4o-mini-transcribe',
   inputUsdPerMillion: 0.4, outputUsdPerMillion: 1.6,
