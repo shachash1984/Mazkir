@@ -51,6 +51,12 @@ const cases: { text: string; check(i: Intent): void; apply?: boolean; history?: 
       { role: 'assistant', text: 'באיזה תאריך ושעה לקבוע את מועד היעד?' }],
     check: i => { assert.equal(i.action, 'task'); assert.equal(i.question, null); assert.equal(i.task?.operation, 'create'); assert.match(i.task.title ?? '', /גלגלי אופניים/); assert.equal(i.task.due, null); assert.equal(i.task.reminder, null); } },
 ];
+cases.push({ text: 'תזכיר לי ב-29 בספטמבר 2099 ב12:00 לקנות אוכל לניניה', apply: true,
+  check: i => {
+    assert.equal(i.action, 'task'); assert.equal(i.question, null); assert.equal(i.language, 'he');
+    assert.equal(i.task?.operation, 'create'); assert.equal(i.task.owner, 'self'); assert.equal(i.task.due, null);
+    assert.ok(i.task.reminder?.at?.startsWith('2099-09-29T12:00'));
+  } });
 let last: Intent | undefined;
 try {
   for (const [index, item] of cases.entries()) {

@@ -50,6 +50,38 @@ export class Tasks {
       `${this.name(p.phone, he)}: ${this.stamp(p.first, r.zone)}`));
     return lines.length ? `\n${choose(he, 'Reminders', 'תזכורות')}:\n${lines.join('\n')}` : '';
   }
+  private friendlyTime(time: number, zone: string, he: boolean): string {
+    const date = DateTime.fromMillis(time, { zone });
+    const today = DateTime.fromMillis(this.now(), { zone }).startOf('day');
+    const day = date.hasSame(today, 'day') ? choose(he, 'today', 'היום')
+      : date.hasSame(today.plus({ days: 1 }), 'day') ? choose(he, 'tomorrow', 'מחר') : date.toFormat('dd/MM/yyyy');
+    return `${day}${choose(he, ' at ', ' ב־')}${date.toFormat('HH:mm')}${zone === POLICY.timezone ? '' : ` (${zone})`}`;
+  }
+  private reminderConfirmation(task: SharedTask, job: Job, command: TaskCommand, he: boolean): string {
+    const groups = new Map<string, { time: number; zone: string; phones: string[] }>();
+    for (const r of task.reminders) for (const p of r.recipients) {
+      if (p.sent !== 0 || (command.operation === 'snooze' ? p.phone !== job.chat : r.id !== idFor(job.id + ':reminder'))) continue;
+      const zone = command.operation === 'snooze' ? command.timezone ?? POLICY.timezone : r.zone;
+      const key = `${zone}:${p.first}`;
+      const group = groups.get(key) ?? { time: p.first, zone, phones: [] };
+      group.phones.push(p.phone); groups.set(key, group);
+    }
+    const lines = [...groups.values()].map(group => {
+      const who = group.phones.length === this.members.length ? choose(he, 'both of you', 'לשניכם')
+        : group.phones.map(phone => phone === job.chat ? choose(he, 'you', 'לך') : (he ? 'ל' : '') + this.name(phone, he)).join(', ');
+      return `${choose(he, "I'll remind ", 'אזכיר ')}${who} ${this.friendlyTime(group.time, group.zone, he)}`;
+    });
+    let reply = `🔔 ${lines.join('; ')}: ${task.title}\n${choose(he, "I'll do the remembering 😉", 'הזיכרון עליי 😉')}`;
+    if (command.operation === 'create' || command.operation === 'edit') {
+      if (task.owner !== job.chat) reply += '\n' + choose(he, 'Owner: ', 'באחריות: ') + this.name(task.owner, he);
+      if (task.due && ![...groups.values()].some(group => task.due!.value.length > 10 && dueMillis(task.due!) === group.time)) {
+        const due = task.due.value.length === 10 ? DateTime.fromISO(task.due.value).toFormat('dd/MM/yyyy')
+          : this.friendlyTime(dueMillis(task.due), task.due.zone, he);
+        reply += '\n' + choose(he, 'Due: ', 'יעד: ') + due;
+      }
+    }
+    return reply;
+  }
   context(chat: string): object {
     this.member(chat);
     const tasks = this.state().tasks;
@@ -242,6 +274,9 @@ export class Tasks {
           task.updatedAt = now;
           const verb = creating ? ['Created', 'נוצרה'] : command.operation === 'complete' ? ['Completed', 'הושלמה'] : command.operation === 'cancel' ? ['Canceled', 'בוטלה'] : command.operation === 'restore' ? ['Restored', 'שוחזרה'] : ['Updated', 'עודכנה'];
           reply = `${choose(he, verb[0]!, verb[1]!)}:\n${this.summary(task, he)}${this.schedules(task, he)}`;
+          if (command.operation === 'snooze' || (command.reminder && ['create', 'edit', 'remind'].includes(command.operation))) {
+            reply = this.reminderConfirmation(task, job, command, he);
+          }
           if (command.clearDue && oldDue !== 'null') reply += '\n' + choose(he, 'Deadline-relative reminders were removed; fixed-time reminders are unchanged.', 'תזכורות יחסיות למועד היעד הוסרו; תזכורות במועד קבוע לא השתנו.');
           if (creating && task.owner && task.owner !== job.chat) this.notice(state, task, job, intent.language, 'assigned a task', 'הקצה/תה משימה');
           else if (['complete', 'cancel', 'restore'].includes(command.operation)) this.notice(state, task, job, intent.language,

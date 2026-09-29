@@ -64,6 +64,55 @@ test('task creation defaults, encryption, authorization and deadline-only behavi
   assert.equal(f.state().tasks.length, 1);
 });
 
+test('Hebrew reminder creation confirms the requested time once without repeating task metadata', t => {
+  const f = fixture(t);
+  f.setTime('2026-09-29T08:00:00');
+  const reply = f.apply({ title: 'לקנות אוכל לניניה', owner: 'self',
+    reminder: reminder('2026-09-29T12:00:00', 'self') }, a, 'he').reply;
+  assert.equal(reply, '🔔 אזכיר לך היום ב־12:00: לקנות אוכל לניניה\nהזיכרון עליי 😉');
+  assert.equal(f.state().tasks[0]!.due, null);
+  // Even a separately specified deadline at the reminder time is shown only once.
+  const withDue = f.apply({ title: 'לקנות חלב', owner: 'self', due: '2026-09-29T13:00:00',
+    reminder: reminder('2026-09-29T13:00:00', 'self') }, a, 'he').reply;
+  assert.equal(withDue, '🔔 אזכיר לך היום ב־13:00: לקנות חלב\nהזיכרון עליי 😉');
+});
+
+test('reminder confirmations group both recipients and snooze confirms only the sender', t => {
+  const f = fixture(t);
+  f.apply({ owner: 'self' });
+  const taskId = f.state().tasks[0]!.id;
+  const both = f.apply({ operation: 'remind', taskId, reminder: reminder('2026-09-16T12:00:00', 'both') }).reply;
+  assert.equal(both, "🔔 I'll remind both of you tomorrow at 12:00: Book dentist\nI'll do the remembering 😉");
+  const snooze = f.apply({ operation: 'snooze', taskId, reminder: reminder('2026-09-18T14:00:00') }).reply;
+  assert.equal(snooze, "🔔 I'll remind you 18/09/2026 at 14:00: Book dentist\nI'll do the remembering 😉");
+  assert.equal(f.state().tasks[0]!.reminders[0]!.recipients.find(p => p.phone === b)!.first, ms('2026-09-16T12:00:00'));
+});
+
+test('compact confirmations retain other recipients, separate deadlines, and explicit foreign zones', t => {
+  const f = fixture(t);
+  const reply = f.apply({ owner: b, due: '2026-09-20', timezone: 'America/New_York',
+    reminder: reminder('2026-09-16T12:00:00') }).reply;
+  assert.match(reply, /I'll remind Dana tomorrow at 12:00 \(America\/New_York\)/);
+  assert.match(reply, /Owner: Dana/);
+  assert.match(reply, /Due: 20\/09\/2026/);
+  assert.doesNotMatch(reply, /Asia\/Jerusalem/);
+});
+
+test('snooze confirms the requested time zone without changing the other recipient', t => {
+  const f = fixture(t);
+  f.apply({ reminder: reminder('2026-09-16T12:00:00', 'both') });
+  const taskId = f.state().tasks[0]!.id;
+  const reply = f.apply({ operation: 'snooze', taskId, timezone: 'America/New_York',
+    reminder: reminder('2026-09-16T12:00:00') }).reply;
+  assert.equal(reply, "🔔 I'll remind you tomorrow at 12:00 (America/New_York): Book dentist\nI'll do the remembering 😉");
+  const recipients = f.state().tasks[0]!.reminders[0]!.recipients;
+  assert.equal(recipients.find(p => p.phone === a)!.first, reminderTime('2026-09-16T12:00:00', 'America/New_York'));
+  assert.equal(recipients.find(p => p.phone === b)!.first, ms('2026-09-16T12:00:00'));
+  const israelReply = f.apply({ operation: 'snooze', taskId, reminder: reminder('2026-09-17T12:00:00') }).reply;
+  assert.match(israelReply, /17\/09\/2026 at 12:00/);
+  assert.doesNotMatch(israelReply, /America\/New_York/);
+});
+
 test('assignment, edits, completion and restoration have the specified notification policy', async t => {
   const f = fixture(t);
   f.apply({ owner: b, due: '2026-09-18' });
