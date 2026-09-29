@@ -98,6 +98,21 @@ test('compact confirmations retain other recipients, separate deadlines, and exp
   assert.doesNotMatch(reply, /Asia\/Jerusalem/);
 });
 
+test('snooze confirms the requested time zone without changing the other recipient', t => {
+  const f = fixture(t);
+  f.apply({ reminder: reminder('2026-09-16T12:00:00', 'both') });
+  const taskId = f.state().tasks[0]!.id;
+  const reply = f.apply({ operation: 'snooze', taskId, timezone: 'America/New_York',
+    reminder: reminder('2026-09-16T12:00:00') }).reply;
+  assert.equal(reply, "🔔 I'll remind you tomorrow at 12:00 (America/New_York): Book dentist\nI'll do the remembering 😉");
+  const recipients = f.state().tasks[0]!.reminders[0]!.recipients;
+  assert.equal(recipients.find(p => p.phone === a)!.first, reminderTime('2026-09-16T12:00:00', 'America/New_York'));
+  assert.equal(recipients.find(p => p.phone === b)!.first, ms('2026-09-16T12:00:00'));
+  const israelReply = f.apply({ operation: 'snooze', taskId, reminder: reminder('2026-09-17T12:00:00') }).reply;
+  assert.match(israelReply, /17\/09\/2026 at 12:00/);
+  assert.doesNotMatch(israelReply, /America\/New_York/);
+});
+
 test('assignment, edits, completion and restoration have the specified notification policy', async t => {
   const f = fixture(t);
   f.apply({ owner: b, due: '2026-09-18' });

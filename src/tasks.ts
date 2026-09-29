@@ -61,8 +61,9 @@ export class Tasks {
     const groups = new Map<string, { time: number; zone: string; phones: string[] }>();
     for (const r of task.reminders) for (const p of r.recipients) {
       if (p.sent !== 0 || (command.operation === 'snooze' ? p.phone !== job.chat : r.id !== idFor(job.id + ':reminder'))) continue;
-      const key = `${r.zone}:${p.first}`;
-      const group = groups.get(key) ?? { time: p.first, zone: r.zone, phones: [] };
+      const zone = command.operation === 'snooze' ? command.timezone ?? POLICY.timezone : r.zone;
+      const key = `${zone}:${p.first}`;
+      const group = groups.get(key) ?? { time: p.first, zone, phones: [] };
       group.phones.push(p.phone); groups.set(key, group);
     }
     const lines = [...groups.values()].map(group => {
